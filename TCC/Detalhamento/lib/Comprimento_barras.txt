@@ -1,0 +1,159 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdbool.h>
+#include "Detalhamento.h"
+
+/**
+ * @date 01/07/22
+ * @author Davi Rondon
+ * TODO:
+ * - Calcular ancoragem nos apoios
+ * - Calcular ancoragem das divisões
+ * - Continuar divisões no negativo
+ * 
+ * @brief Calcula o comprimento de barra para cada divisão do digrama de cada região
+ */
+
+void comprimento_barras( struct viga * structViga){ 
+
+
+        int   limiteInicial   ; // (   ) Seção limite inferior da região
+        int   limiteFinal     ; // (   ) Seção limite superior da região
+        int   secaoCritica    ; // (   ) Seções em que há momento máximo em cada região
+        int   barrasMaxima    ; // (   ) Número de barras calculadas na seção crítica
+        int   NumDivisoes     ; // (   ) Número de divisões realizados para cobrimento do diagrama
+        int   barrasAncoradas ; // (   ) Número de barras que serão ancoradas nos apoios
+        int   barrasDivisao   ; // (   ) Número de barras na divisão
+        int   barrasAncoradas ; // (   ) Número de barras que serão ancoradas no apoio
+        int   barrasPassadas  ; // (   ) Número de barras consideradas nas divisões já calculadas
+        int   secaoInicio     ; // (   ) Seção em que a barra inicia
+        int   secaoFim        ; // (   ) Seção em que a barra termina
+
+        double cortanteMaximo ; // (kN ) Valor do cortante máximo na viga
+        double bitolaMaxima   ; // ( m ) Bitola das barras na seção máxima
+        double momentoMaximo  ; // (kNm) Valor dos momento máximo em cada região
+        double decalagem      ; // ( m ) Comprimento de decalagem do diagrama de momento
+        double momentoDivisao ; // (kNm) Momento referente a uma divisão na regiao
+        double ancoragem      ; // ( m ) Comprimento de ancoragem
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    NumDivisoes     = 3 ;
+    barrasAncoradas = 1 ; //! CHUTE INICIAL ATÉ DESENVOLVIMENTO DO CÁLCULO
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // - CÁLCULO DO CORTANTE MÁXIMO
+
+    cortanteMaximo = 0 ;
+
+    for (int ponto = 0 ; ponto < structViga->malha.N ; ponto++)
+    {
+        if (cortanteMaximo < structViga->solicit.Vd [ ponto ])
+        {
+            cortanteMaximo = structViga->solicit.Vd [ ponto ] ;
+        }
+    }
+    
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    decalagem = comprimento_decalagem( structViga->geo.d , structViga->geo.largura , structViga->prop.fctd , cortanteMaximo ) ;
+
+    for (int regiao = 0; regiao < structViga->malha.numRegioes; regiao++)
+    {
+
+    // - ESTABELECENDO OS PONTOS LIMITES DE UMA REGIÃO
+        limiteInicial = structViga->malha.raizes [ regiao     ] ; 
+        limiteFinal   = structViga->malha.raizes [ regiao + 1 ] ;
+        momentoMaximo = 0 ;
+        secaoCritica  = 0 ;
+
+    // - DESCOBRIR A SEÇÃO EM QUE O MOMENTO É MÁXIMO
+        for (int ponto = limiteInicial ; ponto < limiteFinal; ponto++)
+        {
+            if ( fabs ( structViga->solicit.Md_dec [ ponto ] ) > momentoMaximo )
+            {
+                momentoMaximo = fabs ( structViga->solicit.Md_dec [ ponto ] ) ; 
+                secaoCritica  = ponto ; 
+            }
+        }
+
+        momentoMaximo = structViga->solicit.Md_dec [ secaoCritica ] ;
+
+    // - CALCULAR ANCORAGEM
+
+
+    // - MOMENTO POSITIVO
+        if ( momentoMaximo > 0) 
+        {
+            barrasMaxima  = structViga->barras.N_Lmin [ secaoCritica ]  
+                                                + 
+                            structViga->barras.N_comp [ secaoCritica ] ;
+
+            bitolaMaxima  = structViga->barras.Bt_pos [ secaoCritica ] ;
+
+            // * Calcular barras ancoradas
+
+            // - CALCULANDO O COMPRIMENTO DAS DIVISÕES
+            barrasPassadas = 0 ;
+
+            for (int divisao = 1 ; divisao < NumDivisoes; divisao++)
+            {
+                
+                barrasDivisao  = barrasMaxima - barrasAncoradas - barrasPassadas ;
+                momentoDivisao = barrasDivisao * ( fabs(momentoMaximo) / barrasMaxima ) ;
+
+
+                // - ACHANDO O PONTO DE ENCONTRO DA BARRA COM O DIAGRAMA DE MOMENTO NA PRIMEIRA METADE DA REGIAO
+                for (int secao = limiteInicial ; secao < secaoCritica; secao++)
+                {                   
+                    if  (
+                            structViga->solicit.Md_dec [ secao     ] = momentoDivisao 
+                                                    ||
+                          ( structViga->solicit.Md_dec [ secao     ] > momentoDivisao 
+                                                    &&
+                            structViga->solicit.Md_dec [ secao + 1 ] < momentoDivisao )
+                        )
+                        {
+                            secaoInicio = secao ;   
+                        }
+
+                // - ACHANDO O PONTO DE ENCONTRO DA BARRA COM O DIAGRAMA DE MOMENTO NA SEGUNDA METADE DA REGIAO
+                for (int secao = limiteInicial ; secao < secaoCritica; secao++)
+                    {
+                    if  (
+                            structViga->solicit.Md_dec [ secao     ] = momentoDivisao 
+                                                    ||
+                          ( structViga->solicit.Md_dec [ secao     ] < momentoDivisao 
+                                                    &&
+                            structViga->solicit.Md_dec [ secao + 1 ] > momentoDivisao )
+                        )
+                        {
+                            secaoFim = secao ;  
+                        }                    
+                    }
+
+                    barrasPassadas = barrasDivisao ;
+                }
+
+                secaoInicio -= ( decalagem + ancoragem ) ;
+
+
+            } // FIM CALCULO DO COMPRIMENTO DA DIVISÃO
+        }
+
+
+    // - MOMENTO NEGATIVO
+        else 
+        {
+             ;
+        }
+    }
+
+
+
+
+
+
+}

@@ -1,0 +1,518 @@
+
+void div_reg(struct viga *V){
+
+    int raizes [V->malha.N+1] ; // Vetor com as raízes do diagrama de momento decalado
+    int numRaizes = 0         ; // Número de raízes totais do diagrama de momento decalado
+
+    raizes[numRaizes++] = 0 ;
+    
+    for (int ponto = 1; ponto < (V->malha.N-1); ponto++)
+    {
+        double momentoAtual = V->solicit.Md_dec [ponto    ] ;
+        double momentoProx  = V->solicit.Md_dec [ponto + 1] ;
+       
+        if ( (momentoAtual == 0 && momentoProx !=0) || ( momentoAtual * momentoProx < 0.0 )) 
+        {
+            raizes[numRaizes++] = ponto ;
+        }
+     }
+    
+    raizes[numRaizes++] = V->malha.N-1;
+
+    V->malha.raizes     = malloc(numRaizes * sizeof(int)) ; // Alocação da memória necessária dada a quantidade de raízes calculadas
+    V->malha.numRegioes = numRaizes - 1                   ; // Número de regiões do diagrama de momento decalado
+
+for (int i = 0; i < numRaizes ; i++)
+{
+    V->malha.raizes[i] = raizes[i];
+}
+
+    if (DETALHAR_DIVISAO_REGIOES == 1)
+    {
+        printf("--------------------------------------------------\n");
+        printf("-----------------DIVISÃO_REGIÕES------------------\n");
+        printf("Número de Regiões : %d\n\n",V->malha.numRegioes);
+
+        for (int i = 0; i < V->malha.numRegioes ; i++)    
+        printf("REGIÃO: %d - Limite [ %d , %d ] \n", i , V->malha.raizes [i], V->malha.raizes [i+1]);      
+
+        printf("--------------------------------------------------\n\n");
+    }
+}
+
+void dimensionar_armadura(struct viga *V){
+
+    double *ptrArmaduraLongitudinal = NULL ; // Ponteiro que receberá o resultado do dimensionamento da armadura longitudinal
+    double *ptrArmaduraTransversal  = NULL ; // Ponteiro que receberá o resultado do dimensionamento da armadura transversal
+
+//--------Armaduras Longitudinais-----------//
+    if (CALCULO_ARMADURAS_LONG == 1){
+        printf("*******************************************************\n"   );
+        printf("*********  CÁLCULO DA ARMADURA LONGITUDINAL  **********\n"   );
+        printf("*******************************************************\n\n" );
+    }
+
+    for (int i = 0; i < (V->malha.N); i++)
+    {
+
+        if (CALCULO_ARMADURAS_LONG == 1){
+            printf("--------------------SEÇÃO %d----------------------\n" , i );
+        }
+
+    // Momento negativo
+        if (V->solicit.Md_dec[i] < 0.0) 
+        {
+
+            // Calculo armadura dupla/simples 
+            ptrArmaduraLongitudinal = arm_long(V->solicit.Md_dec[i],V);      
+
+            // Armadura negativa será resultado em tração ou armadura mínima
+            V->arm.A_neg [i]  = fmax( (*(ptrArmaduraLongitudinal)) , V->arm.Al_min );                      
+
+
+            
+            if (*(ptrArmaduraLongitudinal + 1) <= V->arm.Al_min)        // Armadura mínima é suficiente para arm de compressão
+            {                    
+                V->arm.A_comp[i] = 0.0;                                                                             
+            }                                         
+
+            else                                                        // Haverá armadura complementar e armadura mínima                                                  
+            {                                                                                                       
+                V->arm.A_comp[i] = (*(ptrArmaduraLongitudinal + 1));
+            }                                                                                   
+        }   
+    
+    // Momento positivo
+        else if (V->solicit.Md_dec[i] > 0.0)
+        {   
+            ptrArmaduraLongitudinal   = arm_long(V->solicit.Md_dec[i],V);
+
+            if (*(ptrArmaduraLongitudinal) > V->arm.Al_min)             // Armadura de tração é maior que armadura mínima -> haverá Arm comp + Arm min
+            {
+                V->arm.A_comp [i]  = (*(ptrArmaduraLongitudinal)) - V->arm.Al_min ; 
+            }
+            else{                                                       // Armadura de tração é menor que armadura mínima -> Não haverá Armadura complementar
+                V->arm.A_comp [i]  = 0.0;
+            }
+            
+            V->arm.A_neg  [i]  =  *(ptrArmaduraLongitudinal + 1);       // Armadura dupla (caso haja)
+
+        }
+
+    // Momento nulo
+        else
+        {
+            V->arm.A_neg  [i] = 0.0;
+            V->arm.A_comp [i] = 0.0;
+        }
+
+        if (CALCULO_ARMADURAS_LONG == 1)
+        {
+            printf("arm.mínima         = %f [m²]\n" , V->arm.Al_min    );
+            printf("arm.A_complementar = %f [m²]\n" , V->arm.A_comp [i]);
+            printf("arm.A_negativa     = %f [m²]\n" , V->arm.A_neg  [i]);
+            printf("--------------------------------------------------\n");
+            printf("\n");
+        }
+        
+
+
+    }
+
+//--------Armaduras Transversais-----------//
+
+    if (CALCULO_ARMADURAS_TRANS == 1){
+        printf("******************************************************\n"     );
+        printf("*********  CÁLCULO DA ARMADURA TRANSVERSAL  **********\n"     );
+        printf("******************************************************\n\n"   );
+    }
+
+    for (int i = 0; i < (V->malha.N); i++)
+    {
+
+        if (CALCULO_ARMADURAS_TRANS == 1){
+            printf("--------------------SEÇÃO %d----------------------\n" , i );
+        }
+
+        ptrArmaduraTransversal = calc_arm_transv(V->solicit.Vd[i],V);
+
+        // Cortante nulo será utilizado a armadura mínima
+        if (*ptrArmaduraTransversal < V->arm.Asw_min)
+        {
+            V->arm.Asw[i] = V->arm.Asw_min;
+        }
+
+        else
+        {
+            V->arm.Asw[i] = *ptrArmaduraTransversal;
+        }
+
+        if (CALCULO_ARMADURAS_TRANS == 1){
+
+            printf(" Armadura utilizada = %f [m²/m]\n" , V->arm.Asw[i]    );
+            printf("--------------------------------------------------\n" );
+            printf("\n");
+        }
+    }
+}
+
+void calcular_barras(struct viga *V)
+{
+//--------Número de barras-----------//
+
+int associarBarras[5][2] = {{3,5},{3,3},{3,4},{3,3},{3,2}}; // Para cada região haverá { Arm positiva , Arm negativa }
+
+double areaMinimaEfetiva ; // (m²) Área mínima efetiva
+
+for (int regiao = 0; regiao < V->malha.numRegioes; regiao++)
+    {
+
+        for (int ponto = V->malha.raizes[regiao]; ponto <= V->malha.raizes[regiao+1]; ponto++)
+        {
+
+        // TODO Armadura positiva
+        if (V->arm.A_comp [ ponto ] == 0)                                                // * Somente armadura mínima -> Min
+        {
+            V->barras.Bt_pos  [ ponto ] = Bitolas_padrão[associarBarras[regiao][0]] ;
+
+            V->barras.N_Lmin  [ ponto ] = ceil( V->arm.Al_min / (M_PI * pow(V->barras.Bt_pos[ponto]/1000,2) / 4.0 )) ;
+
+            V->barras.N_comp  [ ponto ] = 0 ;
+        }
+      
+        else  // * Caso haja armadura complementar, deve-se verificar se essa será maior que a armadura mínima efetiva calculada                                        
+        {
+            V->barras.Bt_pos [ ponto ] = Bitolas_padrão[associarBarras[regiao][0]] ;
+            
+            V->barras.N_Lmin [ ponto ] = ceil( V->arm.Al_min / ( M_PI * pow( V->barras.Bt_pos [ ponto ] / 1000 , 2 ) / 4.0 )) ;
+
+            areaMinimaEfetiva = V->barras.N_Lmin [ ponto ] * ( M_PI * pow( V->barras.Bt_pos [ ponto ] / 1000 , 2 ) / 4.0 ) ;
+
+            if (V->arm.A_comp [ ponto ] >= areaMinimaEfetiva)                            // * Armadura complementar maior que a mínima efetiva -> Min + Comp
+            {
+                V->barras.N_comp [ ponto ] = ceil( V->arm.A_comp[ponto] / ( M_PI * pow( ( V->barras.Bt_pos[ ponto ] / 1000 ) , 2 ) / 4.0 )) ; 
+            }
+    
+            else                                                                         // * Armadura mínima efetiva maior que complementar -> Min
+            {
+                V->barras.N_comp  [ ponto ] = 0 ;   
+            }
+            
+        }
+
+        // TODO Arm negativa
+
+            V->barras.Bt_neg [ ponto ] = Bitolas_padrão[associarBarras[regiao][1]] ;
+            V->barras.N_neg  [ ponto ] = ceil( V->arm.A_neg[ponto] / (M_PI * pow((V->barras.Bt_neg[ponto]/1000),2) / 4.0 )) ;
+
+        // TODO Arm construtivo
+
+        if (V->barras.N_neg[ ponto ] == 0)
+        {
+            V->barras.N_const [ ponto ] = 2;
+            V->barras.Bt_const[ ponto ] = Bitolas_padrão[0] ;
+        }
+
+        else
+        {
+            V->barras.N_const [ponto] = 0;
+            V->barras.Bt_const[ponto] = 0;
+        }            
+        }
+    }
+    
+    if (DETALHAR_SEÇÕES_ARMADURAS == 1)
+    
+    {
+
+    printf("*****************************************************\n"   );
+    printf("******************  BARRAS SEÇÕES  ******************\n\n" );
+    printf("*****************************************************\n"   );
+
+    for (int ponto = 0; ponto < V->malha.N; ponto++)
+    {    
+        printf("------------------SEÇÃO %d------------------------\n",ponto); 
+        printf("Arm_min   -- %d \u03C6 %.1f mm \n" , V->barras.N_Lmin  [ponto] , V->barras.Bt_pos   [ponto] );
+        printf("Arm_comp  -- %d \u03C6 %.1f mm \n" , V->barras.N_comp  [ponto] , V->barras.Bt_pos   [ponto] );
+        printf("Arm_neg   -- %d \u03C6 %.1f mm \n" , V->barras.N_neg   [ponto] , V->barras.Bt_neg   [ponto] );
+        printf("Arm_const -- %d \u03C6 %.1f mm \n" , V->barras.N_const [ponto] , V->barras.Bt_const [ponto] );
+        printf("--------------------------------------------------\n");
+        printf("\n\n");
+    }
+    }
+
+}
+
+bool verificar_ELS_W(struct viga *V){
+
+    bool saida; //retorna se a verificação esta ok ou não
+
+    int    numBarrasTracao     ; // (   ) Numero de barras em tração da seção
+    int    numBarrasCompressao ; // (   ) Numero de barras em compressão da seção
+    int    maxBarrasCamada     ; // (   ) Numero de barras máximo na camada inferior
+    int    limiteInicial       ; // (   ) Seção limite inferior da região
+    int    limiteFinal         ; // (   ) Seção limite superior da região
+    int    secaoCritica        ; // (   ) Seções em que há momento máximo em cada região
+
+    float  wkMax              ; // ( mm ) Abertura máxima de fissura
+    float  bitolaLongitudinal ; // (m  ) Bitola longitudinal da seção
+    float  bitolaTransversal  ; // (m  ) Bitola trasnversal da seção
+
+    double wk1                      ; // ( mm ) Parâmetro para calculo da expressão da fissuração 
+    double wk2                      ; // ( mm ) Parâmetro para calculo da expressão da fissuração
+    double wk                       ; // ( mm ) Abertura de fissura
+    double taxaArmadura             ; // (m²/m) Taxa de armadura no tirante de armadura na seção NBR6118:2014 Seção 17.3.3.2
+    double sigmaS                   ; // (MPa) Tensão na armadura de um tirante
+    double linhaNeutra2             ; // (m  ) Linha neutra no estádio II
+    double inercia2                 ; // (m4 ) Inercia no estádio II
+    double momentoMaximo            ; // (kNm) Valor do momento máximo em cada região
+    double armaduraTracao           ; // (m² ) Armadura efetiva Longidudinal na parte tracionada
+    double armaduraCompressao       ; // (m² ) Armadura efetiva Longidudinal na parte comprimida
+    double larguraEfetiva           ; // (m  ) Largura Útil da viga
+    double espaçamentoHorizontalMin ; // (m  ) Espaçamento horizonalt máximo NBR6118:2014 Seção 18.3.2.2
+    double espaçamentoHorizontal    ; // (m  ) Espaçamento horizonalt calculado entre as barras
+    double espaçamentoVertical      ; // (m  ) Espaçamento vertical NBR6118:2014 Seção 18.3.2.2
+
+
+    float  alphaE = 15  ; // (   ) Parâmetro divisão do modulo de young do aço contra o modulo secante do concreto (Norma estabelce como 15)
+    float  neta1 = 2.25 ; // (   ) Coeficiente de aderência (Tabela 8.3 NBR6118:2014)
+
+
+    // Abertura de dissura máximo
+    switch (V->prop.classeAgressividade)
+    {
+    case 1 :
+        wkMax = 0.4 ; 
+        break;
+    case 2 :
+        wkMax = 0.3 ; 
+        break;    
+    case 3 :
+        wkMax = 0.3 ; 
+        break; 
+    case 4 :
+        wkMax = 0.2 ; 
+        break;           
+    }
+
+
+for (int regiao = 0; regiao < V->malha.numRegioes ; regiao++)
+{
+    // TODO Estabelecendo os pontos limites de uma região
+        limiteInicial    = V->malha.raizes [ regiao     ] ; 
+        limiteFinal      = V->malha.raizes [ regiao + 1 ] ;
+
+        momentoMaximo     = 0        ;
+        secaoCritica      = 0        ;
+        bitolaTransversal = 0.0063   ; // !!!!! UTILIZANDO BITOLA TRANSVERSAL 6,3 - desenvolver DETALHAMENTO TRASNVERSAL
+
+        larguraEfetiva = V->geo.largura - 2 * V->geo.cob -2 * bitolaTransversal ;
+
+
+    // TODO Descobrir as seções em que o momento é máximo
+        for (int ponto = limiteInicial ; ponto < limiteFinal; ponto++)
+        {
+            if (fabs( V->solicit.Md_dec[ponto] ) > momentoMaximo )  // !!!!!!!!!!!!!!!!! UTILIZANDO MOMENTO DECALADO - desenvolver ANÁLISE PARA UTLIZAR MOMENTO FREQUENTE
+            {
+                momentoMaximo = fabs(V->solicit.Md_dec[ponto]) ; 
+                secaoCritica  = ponto                    ; 
+            }
+            
+        }
+
+    // TODO Descobrir a bitola utilizada na seção critica
+        if (V->solicit.Md_dec[ secaoCritica ] > 0)
+        {
+            bitolaLongitudinal =  V->barras.Bt_pos [ secaoCritica ] * 0.001 ;
+        }
+        else
+        {
+            bitolaLongitudinal =  V->barras.Bt_neg [ secaoCritica ] * 0.001 ;
+        }
+
+
+    // TODO número de barras, armadura de tracao e compressao na seção crítica
+        if (V->solicit.Md_dec[ secaoCritica  ] > 0)
+        {
+            numBarrasTracao     =  V->barras.N_comp [ secaoCritica ] + V->barras.N_Lmin [ secaoCritica ] ;
+            numBarrasCompressao =  V->barras.N_neg  [ secaoCritica ] ;
+
+            armaduraTracao     = numBarrasTracao      * pow ( bitolaLongitudinal ,2 ) * 0.25 * M_PI ;
+            armaduraCompressao = numBarrasCompressao  * pow ( V->barras.Bt_neg [ secaoCritica ] * 0.001 , 2 ) * 0.25 * M_PI ;
+
+        }
+        else
+        {
+            numBarrasTracao     =  V->barras.N_neg  [ secaoCritica ] ;
+            numBarrasCompressao =  V->barras.N_comp [ secaoCritica ] + V->barras.N_Lmin [ secaoCritica ] ;
+
+            armaduraTracao     = numBarrasTracao      * pow ( bitolaLongitudinal ,2 ) * 0.25 * M_PI ;
+            armaduraCompressao = numBarrasCompressao  * pow ( V->barras.Bt_pos [ secaoCritica ] * 0.001 , 2 ) * 0.25 * M_PI ;    
+        }
+
+
+
+    // TODO Espaçamento para cada seção
+        espaçamentoHorizontalMin = fmax(fmax(0.02,bitolaLongitudinal * 0.001), 1.2 * dimensaoAgregado) ;
+        
+        // Máximo de barras na primeira camada
+        maxBarrasCamada          = maxbarras_camada( larguraEfetiva , espaçamentoHorizontalMin , bitolaLongitudinal ) ;
+
+        // Espaçamento entre barras na primeira camada
+        espaçamentoHorizontal    = fmax ( espaçamentoHorizontalMin , espacamento_camada ( larguraEfetiva , maxBarrasCamada , bitolaLongitudinal ) ) ;
+        espaçamentoVertical      = fmax ( fmax(0.02,bitolaLongitudinal), 0.5 * dimensaoAgregado ) ;
+
+    // TODO Taxa de armadura na seção 
+    // ! CONSIDERAR SOMENTE A CAMADA INFERIOR
+        taxaArmadura = calc_taxa_armadura( maxBarrasCamada , numBarrasTracao , V->geo.cob, bitolaLongitudinal , bitolaTransversal , espaçamentoHorizontal ,espaçamentoVertical ) ;
+
+    // TODO Linha neutra e Inercia no estádio 2 
+        linhaNeutra2 = linha_neutra_2 ( alphaE , armaduraTracao , armaduraCompressao , V->geo.largura , V->geo.d , V->geo.d2 ) ;
+        inercia2     = inercia_2      ( alphaE , armaduraTracao , armaduraCompressao , V->geo.largura , V->geo.d , V->geo.d2 ) ;
+
+
+    // TODO Calcular a tensão máxima nas BARRAS 
+        sigmaS = 0.001 * ( momentoMaximo * fabs( linhaNeutra2 - V->geo.d ) ) / inercia2  ; // Verificando somente a armadura inferior
+
+
+    // TODO Abertura de fissura
+        wk1 = ( bitolaLongitudinal * sigmaS * 3 * sigmaS ) / ( 12.5 * neta1 * V->prop.Es * V->prop.fct_m ) ;
+
+        wk2 = ( ( bitolaLongitudinal * sigmaS ) / ( 12.5 * neta1 * V->prop.Es ) ) * ( ( 4 / taxaArmadura) + 45.0 ) ;
+
+
+        printf("\n");
+
+        wk  =   fmin( wk1, wk2 ) ;
+
+        if (wk > wkMax)
+        {
+            saida = false ;
+        }
+        
+    if (CALCULO_ELS_W == 1)
+    {
+        printf("*****************************************************\n");
+        printf("*********************  ELS W  ***********************\n");
+        printf("*****************************************************\n");
+        printf("\n");
+        printf("Seção crítica       [ %d ] = %d             \n " , regiao , secaoCritica             );
+        printf("Momento máximo      [ %d ] = %f     (kNm)   \n " , regiao , momentoMaximo            );
+        printf("Bitola Longitudinal [ %d ] = %f     ( m )   \n " , regiao , bitolaLongitudinal       );
+        printf("NumBarrasTracao     [ %d ] = %d             \n " , regiao , numBarrasTracao          );   
+        printf("NumBarrasCompressao [ %d ] = %d             \n " , regiao , numBarrasCompressao      );   
+        printf("Max Barras camada   [ %d ] = %d             \n " , regiao , maxBarrasCamada          );   
+        printf("Espaçamento max     [ %d ] = %f     ( m )   \n " , regiao , espaçamentoHorizontalMin );
+        printf("Espaçamento Horiz   [ %d ] = %f     ( m )   \n " , regiao , espaçamentoHorizontal    );   
+        printf("Espaçamento Vert    [ %d ] = %f     ( m )   \n " , regiao , espaçamentoVertical      );   
+        printf("Taxa armadura       [ %d ] = %f    (m²/m²)  \n " , regiao , taxaArmadura             ); 
+        printf("Armadura Tração     [ %d ] = %f     (m²)    \n " , regiao , armaduraTracao           ); 
+        printf("Armadura Compr      [ %d ] = %f     (m²)    \n " , regiao , armaduraCompressao       ); 
+        printf("Linha Neutra 2      [ %d ] = %f     (m )    \n " , regiao , linhaNeutra2             ); 
+        printf("Inercia 2           [ %d ] = %f      (m4)   \n " , regiao , inercia2                 ); 
+        printf("SigmaS              [ %d ] = %f     (MPa)   \n " , regiao , sigmaS                   );        
+        printf("V->prop.Es          [ %d ] = %f   (GPa)     \n " , regiao , V->prop.Es               );        
+        printf("V->prop.fct_m       [ %d ] = %f     (MPa)   \n " , regiao , V->prop.fct_m            );        
+        printf("wk1                 [ %d ] = %0.10f (mm) \n " , regiao , wk1                         ); 
+        printf("wk2                 [ %d ] = %0.10f (mm) \n " , regiao , wk2                         ); 
+        printf("wk Max              [ %d ] = %0.10f (mm) \n " , regiao , wkMax                       ); 
+        printf("\n\n");
+    }
+          
+}
+    
+    return saida;
+
+}
+
+bool verificar_Seçao(struct viga *V){
+
+    bool saida ;   // Se TRUE - seção esta OK
+
+    double espaçamentoHorizontal  ; // (m ) Espaçamento horizontal entre face de barras
+    double espaçamentoVertical    ; // (m ) Espaçamento vertical entre face de barras
+    int    numeroBarrasFaltantes  ; // (  ) Número de barras faltantes na seção
+    int    numeroBarrasSeçao      ; // (  ) Número de barras calculadas na seção
+    int    numeroBarrascalculadas ; // (  ) Número de barras calculadas na camada
+    float  bitolaSeçao            ; // (mm) Bitola da seção
+    double dReal                  ; // (m ) Altura útil calculada para cada seção
+    int    camada                 ; // (  ) Camada de barras na seção
+
+    double larguraEfetiva = V->geo.largura - 2 * V->geo.cob ; // (m) Largura Útil da viga
+
+
+
+
+for ( int seçao = 0; seçao < V->malha.N ; seçao++)
+{
+    
+    // TODO Verificação se na seção esta sendo utilizando ARMADURA COMP ou ARMADURA MÍNIMA
+    if (V->barras.N_comp[seçao] == 0)
+    {
+        numeroBarrasSeçao = V->barras.N_Lmin  [seçao] ;
+    }
+   
+    else
+    {
+        numeroBarrasSeçao = V->barras.N_comp  [seçao] ;
+    }
+
+    bitolaSeçao           = V->barras.Bt_pos [seçao] ;
+    numeroBarrasFaltantes = numeroBarrasSeçao        ;
+    camada                = 0                        ;
+    dReal                 = 0                        ;   
+
+
+
+
+
+    // TODO Calculo do espaçamento Horizontal e Verical máximo
+    espaçamentoHorizontal = fmax(fmax(0.02,bitolaSeçao * 0.001), 1.2 * dimensaoAgregado) ;
+    espaçamentoVertical   = fmax(fmax(0.02,bitolaSeçao * 0.001), 0.5 * dimensaoAgregado) ;
+
+    // TODO Calculo das camadas
+    while (numeroBarrasFaltantes >= 0)
+    {
+
+        if (camada == 0)
+        {
+            numeroBarrascalculadas = maxbarras_camada(larguraEfetiva , espaçamentoHorizontal , bitolaSeçao*0.001) ;
+        }
+        else
+        {
+            numeroBarrascalculadas = 2 ;
+        }
+
+        dReal = dReal + ( (double) numeroBarrascalculadas / ( (double) numeroBarrasSeçao ) ) * ( ( (bitolaSeçao*0.001)/2.0 ) + ( (double) camada * espaçamentoVertical) ) ;
+
+        numeroBarrasFaltantes = numeroBarrasFaltantes -  numeroBarrascalculadas ;
+
+        camada = camada + 1; ;
+
+    }
+
+    //Verificação Da altura útil calculada
+    if (dReal > V->geo.d)
+    {
+        saida = false ;
+        break ;
+    }
+    else
+    {
+        saida = true ;
+    }
+    
+}
+
+    if (CALCULO_SEÇOES == 1)
+    {
+
+    printf("*****************************************************\n"   );
+    printf("*************  VERIFICAÇÃO DAS SEÇÕES  **************\n\n" );
+    printf("*****************************************************\n"   );
+
+    printf("VERIFICAÇÃO OK  = %i\n", saida );
+
+    }
+    return saida;
+}

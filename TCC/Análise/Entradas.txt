@@ -1,0 +1,46 @@
+numero de nos :
+5
+
+numero de barras :
+4
+
+Coordenada dos nos (0 a NN):
+k= 0 x= 0.0
+k= 1 x= 4.0
+k= 2 x= 8.5
+k= 3 x= 10.0
+k= 4 x= 13.0
+
+Propriedade barras
+(Barra)    (INI)     (FIM)      (E - GPa)       (I - m²) :
+barra= 0   INI= 0     FIM= 1     E= 10000     I= 0.001
+barra= 1   INI= 1     FIM= 2     E= 10000     I= 0.001
+barra= 2   INI= 2     FIM= 3     E= 10000     I= 0.001
+barra= 3   INI= 3     FIM= 4     E= 10000     I= 0.001
+
+Número de vinculos :
+3
+
+Vinculo das barras
+(Nó)    (Vinculo linear)  (Vinculo rotação) :
+k= 0        Vl= 1              VM= 1
+k= 1        Vl= 1              VM= 0
+k= 3        Vl= 1              VM= 0
+
+Número de cargas nodais :
+2
+
+Cargas nodais (positivo para cima e sentido antihorário)
+(Nó)    (forças - kN)     (Momentos - kNm) :
+k= 2        F=-10.5            M= 0
+k= 4        F= 0               M= -15.30
+
+Número de barras com carregamento :
+4
+
+Carregamento nas barras (positivo para cima e sentido antihorário)
+(Barra)    (qyi - kN/m)       (qyi - kN/m) :
+k= 0        qyi= -1.5          qyi= -2.0
+k= 1        qyi= -1.5          qyi= -1.5
+k= 2        qyi= -1.5          qyi= -1.5
+k= 3        qyi= -3.0          qyi= -3.0
